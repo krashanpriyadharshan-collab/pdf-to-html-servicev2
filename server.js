@@ -1,38 +1,34 @@
 import express from 'express';
 import multer from 'multer';
+import cors from 'cors'; // Import CORS
 import { execFile } from 'child_process';
-import { mkdtemp, readFile, writeFile, rm } from 'fs/promises';
-import { existsSync, mkdirSync } from 'fs';
+import { mkdtemp, writeFile, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { join } from 'path';
 
 const app = express();
+
+// ✅ FIX: Enable CORS for ALL domains
+app.use(cors({
+    origin: '*', 
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type']
+}));
+
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Ensure uploads directory exists
-const UPLOADS_DIR = join(__dirname, 'uploads');
-if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR);
+app.get('/', (req, res) => res.send('PDF Backend is Running!'));
 
-app.use(express.static(__dirname)); // Serve index.html and static assets
-app.use('/uploads', express.static(UPLOADS_DIR));
-
-app.post('/api/convert', upload.single('pdf'), async (req, res) => {
+app.post('/convert', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No PDF uploaded' });
 
-    const fileId = Date.now().toString();
-    const workDir = await mkdtemp(join(tmpdir(), 'pdf2html-'));
+    const workDir = await mkdtemp(join(tmpdir(), 'p2h-'));
     const pdfPath = join(workDir, 'input.pdf');
-    const outFileName = `${fileId}.html`;
-    const outPath = join(UPLOADS_DIR, outFileName);
+    const htmlPath = join(workDir, 'output.html');
 
     try {
         await writeFile(pdfPath, req.file.buffer);
 
-        // Run pdf2htmlEX
         await new Promise((resolve, reject) => {
             execFile('pdf2htmlEX', [
                 '--zoom', '1.3',
@@ -42,20 +38,17 @@ app.post('/api/convert', upload.single('pdf'), async (req, res) => {
                 '--embed-javascript', '1',
                 '--embed-outline', '0',
                 '--no-drm', '1',
-                '--dest-dir', UPLOADS_DIR,
+                '--dest-dir', workDir,
                 pdfPath,
-                outFileName
-            ], (err, stdout, stderr) => {
-                if (err) {
-                    console.error('pdf2htmlEX error:', stderr);
-                    reject(err);
-                } else {
-                    resolve();
-                }
+                'output.html'
+            ], (err) => {
+                if (err) reject(err);
+                else resolve();
             });
         });
 
-        res.json({ url: `/uploads/${outFileName}` });
+        const html = await readFile(htmlPath, 'utf-8');
+        res.json({ html });
 
     } catch (error) {
         console.error(error);
@@ -66,8 +59,4 @@ app.post('/api/convert', upload.single('pdf'), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-    console.log(`- Place your index.html in this directory`);
-    console.log(`- PDF uploads are stored in /uploads`);
-});
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
