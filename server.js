@@ -30,22 +30,22 @@ app.post('/convert', upload.single('file'), async (req, res) => {
         await writeFile(pdfPath, req.file.buffer);
 
         await new Promise((resolve, reject) => {
-            execFile('pdf2htmlEX', [
-                '--zoom', '1.3',
-                '--embed-css', '1',
-                '--embed-font', '1',
-                '--embed-image', '1',
-                '--embed-javascript', '1',
-                '--embed-outline', '0',
-                '--no-drm', '1',
-                '--dest-dir', workDir,
-                pdfPath,
-                'output.html'
-            ], (err) => {
-                if (err) reject(err);
-                else resolve();
-            });
-        });
+execFile('pdf2htmlEX', [
+  '--dest-dir', workDir,
+  '--embed', 'cfijo',
+  '--optimize-text', '1',
+  '--printing', '0',
+  '--zoom', '1.3',
+  pdfPath,
+  htmlPath
+], (err, stdout, stderr) => {
+  if (err) {
+    console.error('pdf2htmlEX stderr:', stderr);
+    reject(new Error(stderr || err.message));
+  } else {
+    resolve();
+  }
+});
 
         const html = await readFile(htmlPath, 'utf-8');
         res.json({ html });
